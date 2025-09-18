@@ -3,13 +3,11 @@ import pandas as pd
 import plotly.graph_objects as go
 import gspread
 from google.oauth2.service_account import Credentials
-import json
 import time
 from streamlit_autorefresh import st_autorefresh
 
 # ================= AUTO-REFRESH =================
-# Refresh every 5 seconds
-st_autorefresh(interval=5000, limit=None, key="datarefresh")
+st_autorefresh(interval=5000, limit=None, key="datarefresh")  # every 5s
 
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Radioactive Water Contamination Detector", layout="wide")
@@ -29,24 +27,35 @@ p.app-sub { text-align: center; color: #39FF14; margin-top: 0; font-size: 20px; 
 """
 st.markdown(css_block, unsafe_allow_html=True)
 
-# ================= GOOGLE SHEETS CONNECTION USING SECRET =================
-json_key = st.secrets["google_service_account"]["json_key"]
-creds_dict = json.loads(json_key)
-creds = Credentials.from_service_account_info(creds_dict)
-gc = gspread.authorize(creds)
-sheet = gc.open("Water Data").sheet1  # Replace with your sheet name
+# ================= GOOGLE SHEETS CONNECTION =================
+try:
+    creds_dict = st.secrets["gcp_service_account"]  # use the secret key you uploaded
+    creds = Credentials.from_service_account_info(
+        creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"]
+    )
+    gc = gspread.authorize(creds)
 
-# ================= FETCH DATA =================
-data = sheet.get_all_records()
-df = pd.DataFrame(data)
+    # Open sheet by ID
+    SHEET_ID = "1E7nkDieJsBEULLCjIosujXKc_9y-ZLwZJrPSgM8hUfI"
+    sheet = gc.open_by_key(SHEET_ID).sheet1
 
-if not df.empty:
-    latest = df.iloc[-1]
-    ph = float(latest['pH'])
-    tds = float(latest['TDS'])
-    location = latest['Location']
-else:
+    # Fetch DataFrame
+    data = sheet.get_all_records()
+    df = pd.DataFrame(data)
+
+    if not df.empty:
+        latest = df.iloc[-1]
+        ph = float(latest.get("pH", 7.0))
+        tds = float(latest.get("TDS", 300.0))
+        location = latest.get("Location", "Unknown")
+    else:
+        ph, tds, location = 7.0, 300.0, "Unknown"
+
+except Exception as e:
+    st.error("❌ Could not connect to Google Sheets.")
+    st.exception(e)
     ph, tds, location = 7.0, 300.0, "Unknown"
+    df = pd.DataFrame()
 
 # ================= RISK CALCULATION =================
 def predict_contamination(ph, tds):
@@ -118,11 +127,8 @@ with tabs[2]:
     - Always check your local water safety guidelines.
     """)
 
-# Footer
-st.markdown("---")
-st.markdown('<p style="text-align:center; color:#FFD300;">👨‍💻 Developed by Karthikeyan</p>', unsafe_allow_html=True)
-st.markdown("---")
-
 # ---- Show Full Data Table ----
+st.markdown("---")
 st.subheader("📈 All Recorded Data")
 st.dataframe(df)
+st.markdown('<p style="text-align:center; color:#FFD300;">👨‍💻 Developed by Karthikeyan</p>', unsafe_allow_html=True)
